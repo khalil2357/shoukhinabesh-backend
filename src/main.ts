@@ -11,7 +11,10 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173'],
+    origin: [
+      'http://localhost:5173',
+      'http://192.168.0.100:5173',
+    ],
     credentials: true,
   });
 
@@ -37,7 +40,7 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`🚀 Server running on http://localhost:${port}/api/v1`);
   console.log(`📚 Docs: http://localhost:${port}/api/docs`);
 }
