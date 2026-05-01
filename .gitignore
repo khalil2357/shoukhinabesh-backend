@@ -43,6 +43,4 @@ Thumbs.db
 prisma/migrations/dev/
 
 # Optional lock files (keep only one package manager)
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+
