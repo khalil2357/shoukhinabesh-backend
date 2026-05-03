@@ -12,7 +12,7 @@ import {
 } from './dto/product.dto';
 import { Role } from '@prisma/client';
 import slugify from 'slugify';
-import { isValidObjectId } from 'mongoose';
+import { ObjectId } from 'mongodb';
 
 @Injectable()
 export class ProductsService {
@@ -146,7 +146,7 @@ export class ProductsService {
     userId: string,
     role: Role,
   ) {
-    if (!isValidObjectId(id)) {
+    if (!ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid product ID');
     }
 
@@ -184,7 +184,7 @@ export class ProductsService {
   // ─────────────────────────────────────────────
   async remove(id: string) {
     // 1. Validate ID format
-    if (!isValidObjectId(id)) {
+    if (!ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid product ID');
     }
 
