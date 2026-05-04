@@ -17,6 +17,8 @@ import { CouponsModule } from './modules/coupons/coupons.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { HealthModule } from './modules/health/health.module';
 import { MailModule } from './modules/mail/mail.module';
+import { WishlistModule } from './modules/wishlist/wishlist.module';
+
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { MailModule } from './modules/mail/mail.module';
     CouponsModule,
     UploadModule,
     HealthModule,
+    WishlistModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },

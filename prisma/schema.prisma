@@ -50,6 +50,7 @@ model User {
   products Product[]
   reviews  Review[]
   cart     Cart?
+  wishlist Wishlist?
   otpCodes OtpCode[]
 }
 
@@ -92,11 +93,12 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  category   Category    @relation(fields: [categoryId], references: [id])
-  vendor     User        @relation(fields: [vendorId], references: [id])
-  reviews    Review[]
-  orderItems OrderItem[]
-  cartItems  CartItem[]
+  category      Category       @relation(fields: [categoryId], references: [id])
+  vendor        User           @relation(fields: [vendorId], references: [id])
+  reviews       Review[]
+  orderItems    OrderItem[]
+  cartItems     CartItem[]
+  wishlistItems WishlistItem[]
 }
 
 // ── CART ─────────────────────────────────────────────────────────────────────
@@ -182,3 +184,27 @@ model Coupon {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
 }
+
+// ── WISHLIST ─────────────────────────────────────────────────────────────────
+
+model Wishlist {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User           @relation(fields: [userId], references: [id])
+  items WishlistItem[]
+}
+
+model WishlistItem {
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  wishlistId String @db.ObjectId
+  productId  String @db.ObjectId
+
+  wishlist Wishlist @relation(fields: [wishlistId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([wishlistId, productId])
+}
+
