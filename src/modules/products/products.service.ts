@@ -12,7 +12,8 @@ import {
 } from './dto/product.dto';
 import { Role } from '@prisma/client';
 import slugify from 'slugify';
-import { isValidObjectId } from 'mongoose';
+
+const isValidObjectId = (value: string) => /^[0-9a-fA-F]{24}$/.test(value);
 
 @Injectable()
 export class ProductsService {
@@ -62,7 +63,31 @@ export class ProductsService {
       ];
     }
 
-    if (categoryId) where.categoryId = categoryId;
+    // Handle categoryId: convert slug to ID if needed
+    if (categoryId) {
+      if (isValidObjectId(categoryId)) {
+        // It's already a valid ObjectID
+        where.categoryId = categoryId;
+      } else {
+        // Try to find the category by slug
+        const category = await this.prisma.category.findUnique({
+          where: { slug: categoryId },
+          select: { id: true },
+        });
+        if (category) {
+          where.categoryId = category.id;
+        } else {
+          // Category not found, return empty results
+          return {
+            products: [],
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          };
+        }
+      }
+    }
 
     if (minPrice || maxPrice) {
       where.price = {};
