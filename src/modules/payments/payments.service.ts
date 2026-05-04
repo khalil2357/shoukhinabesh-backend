@@ -76,8 +76,8 @@ export class PaymentsService {
       const intent = event.data.object;
       const orderId = (intent as { metadata?: Record<string, string> }).metadata?.orderId;
       if (orderId) {
-        await this.ordersService.markAsPaid(orderId);
-        this.logger.log(`Order ${orderId} marked as PAID via Stripe`);
+        await this.ordersService.completeOrder(orderId);
+        this.logger.log(`Order ${orderId} marked as PAID and finalized via Stripe`);
       }
     }
   }
@@ -146,9 +146,9 @@ export class PaymentsService {
       where: { orderNumber: tran_id },
     });
     if (order) {
-      await this.ordersService.markAsPaid(order.id);
+      await this.ordersService.completeOrder(order.id);
       this.logger.log(
-        `Order ${order.orderNumber} marked as PAID via SSLCommerz (val_id: ${val_id})`,
+        `Order ${order.orderNumber} marked as PAID and finalized via SSLCommerz (val_id: ${val_id})`,
       );
     }
 

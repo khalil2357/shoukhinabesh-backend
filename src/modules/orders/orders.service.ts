@@ -54,47 +54,95 @@ export class OrdersService {
     const total = subTotal - discount;
     const orderNumber = 'ORD-' + Date.now().toString().slice(-8).toUpperCase();
 
-    const order = await this.prisma.$transaction(async (tx) => {
-      const newOrder = await tx.order.create({
-        data: {
-          orderNumber,
-          customerId: userId,
-          total,
-          discount,
-          shippingAddress: dto.shippingAddress || '',
-          paymentMethod: dto.paymentMethod,
-          notes: dto.notes,
-          items: {
-            create: cart.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              price: item.product.price,
-            })),
-          },
+    const order = await this.prisma.order.create({
+      data: {
+        orderNumber,
+        customerId: userId,
+        total,
+        discount,
+        shippingAddress: dto.shippingAddress || '',
+        paymentMethod: dto.paymentMethod,
+        notes: dto.notes,
+        items: {
+          create: cart.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.product.price,
+          })),
         },
-        include: { customer: true },
-      });
+      },
+      include: { customer: true },
+    });
 
-      for (const item of cart.items) {
+    // We no longer reduce stock or clear cart here.
+    // This will be done in completeOrder() once payment is confirmed.
+
+    return order;
+  }
+
+  async completeOrder(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: { include: { product: true } }, customer: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Idempotency check: If already paid, do nothing
+    if (order.paymentStatus === PayStatus.PAID) {
+      return order;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Validate and Reduce Stock
+      for (const item of order.items) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+        });
+
+        if (!product || product.stock < item.quantity) {
+          throw new BadRequestException(
+            `Product ${product?.name || item.productId} is out of stock`,
+          );
+        }
+
         await tx.product.update({
           where: { id: item.productId },
           data: { stock: { decrement: item.quantity } },
         });
       }
 
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+      // 2. Clear Customer Cart
+      await tx.cartItem.deleteMany({
+        where: { cart: { userId: order.customerId } },
+      });
 
-      return newOrder;
+      // 3. Update Order Status
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paymentStatus: PayStatus.PAID,
+          status: OrderStatus.PROCESSING,
+        },
+      });
+
+      // 4. Send Confirmation Email
+      try {
+        await this.mailService.sendOrderConfirmation(
+          order.customer.email,
+          order.customer.name,
+          order.orderNumber,
+          order.total,
+        );
+      } catch (error) {
+        console.error('Failed to send order confirmation email:', error);
+        // We don't roll back the transaction for email failure
+      }
+
+      return updatedOrder;
     });
-
-    await this.mailService.sendOrderConfirmation(
-      order.customer.email,
-      order.customer.name,
-      order.orderNumber,
-      order.total,
-    );
-
-    return order;
   }
 
   async getMyOrders(userId: string, page = 1, limit = 10) {
@@ -148,12 +196,6 @@ export class OrdersService {
     });
   }
 
-  async markAsPaid(id: string) {
-    return this.prisma.order.update({
-      where: { id },
-      data: { paymentStatus: PayStatus.PAID },
-    });
-  }
 
   async cancelOrder(id: string, userId: string, role: Role) {
     const order = await this.prisma.order.findUnique({
