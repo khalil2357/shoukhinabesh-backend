@@ -1,41 +1,32 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 @Injectable()
 export class MailService {
-  private transporter: nodemailer.Transporter;
   private readonly logger = new Logger(MailService.name);
+  private readonly resend: Resend | null;
+  private readonly fromEmail: string;
 
   constructor(private config: ConfigService) {
-    const smtpHost = this.config.get<string>('SMTP_HOST');
-    const smtpUser = this.config.get<string>('SMTP_USER');
-    const smtpPass = this.config.get<string>('SMTP_PASS');
+    const resendApiKey = this.config.get<string>('RESEND_API_KEY');
+    this.fromEmail =
+      this.config.get<string>('EMAIL_FROM') ?? 'no-reply@shoukhinabesh.com';
 
-    if (!smtpHost || !smtpUser || !smtpPass) {
-      this.logger.warn(
-        `SMTP not fully configured. Host: ${!!smtpHost}, User: ${!!smtpUser}, Pass: ${!!smtpPass}`,
-      );
+    if (!resendApiKey) {
+      this.logger.warn('RESEND_API_KEY is not configured. Email delivery will fail.');
+      this.resend = null;
+    } else {
+      this.resend = new Resend(resendApiKey);
     }
 
-    this.transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: this.config.get<number>('SMTP_PORT', 587),
-      secure: false,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-    });
-
-    this.logger.log(`Mail service initialized with SMTP host: ${smtpHost}`);
+    this.logger.log(`Mail service initialized with Resend sender: ${this.fromEmail}`);
   }
 
   async sendRegistrationOtp(email: string, name: string, otp: string): Promise<void> {
     try {
       this.logger.log(`Attempting to send registration OTP to ${email}`);
-      await this.transporter.sendMail({
-        from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
+      await this.sendEmail({
         to: email,
         subject: 'The Vault: Verify Your Membership',
         html: `
@@ -58,15 +49,14 @@ export class MailService {
       });
       this.logger.log(`✓ Registration OTP sent successfully to ${email}`);
     } catch (err) {
-      this.logger.error(`✗ Failed to send registration OTP to ${email}`, err.message || err);
+      this.logger.error(`✗ Failed to send registration OTP to ${email}`, this.getErrorMessage(err));
     }
   }
 
   async sendPasswordResetOtp(email: string, name: string, otp: string): Promise<void> {
     try {
       this.logger.log(`Attempting to send password reset OTP to ${email}`);
-      await this.transporter.sendMail({
-        from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
+      await this.sendEmail({
         to: email,
         subject: 'The Vault: Secure Your Account',
         html: `
@@ -89,7 +79,7 @@ export class MailService {
       });
       this.logger.log(`✓ Password reset OTP sent successfully to ${email}`);
     } catch (err) {
-      this.logger.error(`✗ Failed to send password reset OTP to ${email}`, err.message || err);
+      this.logger.error(`✗ Failed to send password reset OTP to ${email}`, this.getErrorMessage(err));
     }
   }
 
@@ -101,8 +91,7 @@ export class MailService {
   ): Promise<void> {
     try {
       this.logger.log(`Attempting to send order confirmation to ${email} for order ${orderNumber}`);
-      await this.transporter.sendMail({
-        from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
+      await this.sendEmail({
         to: email,
         subject: `Order Confirmed — ${orderNumber}`,
         html: `
@@ -119,7 +108,46 @@ export class MailService {
       });
       this.logger.log(`✓ Order confirmation sent successfully to ${email}`);
     } catch (err) {
-      this.logger.error(`✗ Failed to send order confirmation to ${email}`, err.message || err);
+      this.logger.error(`✗ Failed to send order confirmation to ${email}`, this.getErrorMessage(err));
     }
+  }
+
+  private async sendEmail({
+    to,
+    subject,
+    html,
+  }: {
+    to: string;
+    subject: string;
+    html: string;
+  }): Promise<void> {
+    if (!this.resend) {
+      throw new Error('RESEND_API_KEY is missing. Configure it in the deployment environment.');
+    }
+
+    const response = await this.resend.emails.send({
+      from: `Shoukhinabesh <${this.fromEmail}>`,
+      to,
+      subject,
+      html,
+    });
+
+    if (response.error) {
+      throw new Error(
+        `${response.error.name}: ${response.error.message}`,
+      );
+    }
+
+    if (response.data?.id) {
+      this.logger.log(`Resend accepted message ${response.data.id} for ${to}`);
+    }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return String(error);
   }
 }

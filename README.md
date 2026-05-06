@@ -77,11 +77,8 @@ API_BASE_URL=http://localhost:3000
 JWT_SECRET=your_jwt_access_secret
 JWT_REFRESH_SECRET=your_jwt_refresh_secret
 
-# Mail (SMTP)
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=your_smtp_user
-SMTP_PASS=your_smtp_password
+# Mail (Resend)
+RESEND_API_KEY=re_xxx
 EMAIL_FROM=no-reply@yourdomain.com
 
 # Cloudinary
