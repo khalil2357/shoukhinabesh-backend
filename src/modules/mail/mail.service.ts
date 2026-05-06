@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 
@@ -8,24 +7,18 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 export class MailService {
   private readonly logger = new Logger(MailService.name);
 
-  private readonly resend: Resend | null;
+  // Resend removed — SMTP-only
   private transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null = null;
 
   private readonly fromEmail: string;
 
   constructor(private config: ConfigService) {
-    const resendApiKey = this.config.get<string>('RESEND_API_KEY');
-
     const smtpHost = this.config.get<string>('SMTP_HOST');
     const smtpPort = Number(this.config.get<string>('SMTP_PORT') || 587);
     const smtpUser = this.config.get<string>('SMTP_USER');
     const smtpPass = this.config.get<string>('SMTP_PASS')?.replace(/\s+/g, '');
 
-    this.fromEmail =
-      this.config.get<string>('EMAIL_FROM') || 'onboarding@resend.dev';
-
-    // Resend init
-    this.resend = resendApiKey ? new Resend(resendApiKey) : null;
+    this.fromEmail = this.config.get<string>('EMAIL_FROM') || 'no-reply@shoukhinabesh.com';
 
     // SMTP init
     if (smtpHost && smtpUser && smtpPass) {
@@ -52,9 +45,7 @@ export class MailService {
         );
     }
 
-    this.logger.log(
-      `🚀 MailService initialized (SMTP: ${!!this.transporter}, Resend: ${!!this.resend})`,
-    );
+    this.logger.log(`🚀 MailService initialized (SMTP: ${!!this.transporter})`);
   }
 
   // ================= PUBLIC API =================
@@ -77,6 +68,25 @@ export class MailService {
     });
   }
 
+  sendOrderConfirmation(email: string, name: string, orderNumber: string, total: number) {
+    const html = `
+      <div style="font-family: Arial; max-width:500px; margin:auto; padding:20px;">
+        <h2>Order Confirmed</h2>
+        <p>Hello ${name || 'Customer'},</p>
+        <p>Your order <strong>${orderNumber}</strong> has been received and is being processed.</p>
+        <p>Total: <strong>&#2547;${total.toFixed(2)}</strong></p>
+        <p>We will notify you when your order ships.</p>
+      </div>
+    `;
+
+    this.sendEmailNonBlocking({
+      to: email,
+      subject: `Order Confirmed — ${orderNumber}`,
+      html,
+      text: `Order ${orderNumber} confirmed. Total: ${total}`,
+    });
+  }
+
   // ================= NON-BLOCKING WRAPPER =================
 
   private sendEmailNonBlocking(data: {
@@ -86,7 +96,7 @@ export class MailService {
     text: string;
   }) {
     this.sendEmail(data).catch((err) => {
-      this.logger.error('❌ Email error:', err);
+      this.logger.error('❌ Email error: ' + this.getErrorMessage(err));
     });
   }
 
@@ -124,29 +134,12 @@ export class MailService {
         this.logger.log(`✅ SMTP sent ${(result as any).messageId}`);
         return;
       } catch (err) {
-        this.logger.warn('⚠️ SMTP failed → fallback to Resend');
+        this.logger.warn('⚠️ SMTP failed → fallback to Resend: ' + this.getErrorMessage(err));
       }
     }
 
-    // -------- RESEND FALLBACK --------
-    if (this.resend) {
-      const res = await this.resend.emails.send({
-        from: `Shoukhinabesh <${this.fromEmail}>`,
-        to,
-        subject,
-        html,
-        text,
-      });
-
-      if (res.error) {
-        throw new Error(res.error.message);
-      }
-
-      this.logger.log(`✅ Resend sent ${res.data?.id}`);
-      return;
-    }
-
-    throw new Error('No email provider configured');
+    // If we reach here, SMTP was not available or failed — only SMTP is supported now
+    throw new Error('SMTP transport not configured or failed. Configure SMTP_HOST/SMTP_USER/SMTP_PASS.');
   }
 
   // ================= TEMPLATE =================
@@ -173,4 +166,25 @@ export class MailService {
       </div>
     `;
   }
+
+    // Exposed helper for testing from controllers or e2e tests
+    async sendTestEmail(to: string, subject = 'Test email from Shoukhinabesh') {
+      const html = `<div><h3>Test Email</h3><p>This is a test email from the backend.</p></div>`;
+      try {
+        await this.sendEmail({ to, subject, html, text: 'Test email' });
+        return true;
+      } catch (err) {
+        this.logger.error('❌ sendTestEmail failed: ' + this.getErrorMessage(err));
+        throw err;
+      }
+    }
+
+    private getErrorMessage(error: unknown): string {
+      if (error instanceof Error) return error.message + (error.stack ? '\n' + error.stack : '');
+      try {
+        return JSON.stringify(error);
+      } catch {
+        return String(error);
+      }
+    }
 }
