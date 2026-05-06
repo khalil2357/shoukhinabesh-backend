@@ -7,230 +7,170 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+
   private readonly resend: Resend | null;
   private transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null = null;
+
   private readonly fromEmail: string;
-  private readonly defaultFromEmail = 'onboarding@resend.dev';
-  private readonly useSmtp: boolean;
 
   constructor(private config: ConfigService) {
     const resendApiKey = this.config.get<string>('RESEND_API_KEY');
-    const configuredFromEmail = this.config.get<string>('EMAIL_FROM')?.trim();
+
     const smtpHost = this.config.get<string>('SMTP_HOST');
-    const smtpPort = this.config.get<string>('SMTP_PORT');
+    const smtpPort = Number(this.config.get<string>('SMTP_PORT') || 587);
     const smtpUser = this.config.get<string>('SMTP_USER');
-    const smtpPassRaw = this.config.get<string>('SMTP_PASS');
+    const smtpPass = this.config.get<string>('SMTP_PASS')?.replace(/\s+/g, '');
 
-    // normalize SMTP password: app passwords are often displayed with spaces
-    const smtpPass = smtpPassRaw ? smtpPassRaw.replace(/\s+/g, '') : undefined;
+    this.fromEmail =
+      this.config.get<string>('EMAIL_FROM') || 'onboarding@resend.dev';
 
-    this.useSmtp = Boolean(smtpHost && smtpUser && smtpPass);
-    this.fromEmail = this.resolveFromEmail(configuredFromEmail);
+    // Resend init
+    this.resend = resendApiKey ? new Resend(resendApiKey) : null;
 
-    if (!resendApiKey) {
-      this.logger.warn('RESEND_API_KEY is not configured. Resend fallback will be disabled.');
-      this.resend = null;
-    } else {
-      this.resend = new Resend(resendApiKey);
-    }
-
-    if (this.useSmtp) {
-      const portNum = smtpPort ? Number(smtpPort) : 465;
+    // SMTP init
+    if (smtpHost && smtpUser && smtpPass) {
       this.transporter = nodemailer.createTransport({
         host: smtpHost,
-        port: portNum,
-        secure: portNum === 465,
+        port: smtpPort,
+        secure: smtpPort === 465,
         auth: {
           user: smtpUser,
           pass: smtpPass,
         },
+        tls: {
+          rejectUnauthorized: false,
+        },
+        connectionTimeout: 5000,
+        socketTimeout: 5000,
       });
 
-      // verify transporter async and log result
-      this.transporter.verify()
-        .then(() => this.logger.log('SMTP transporter verified successfully'))
-        .catch((err) => this.logger.warn('SMTP transporter verification failed: ' + String(err)));
+      this.transporter
+        .verify()
+        .then(() => this.logger.log('✅ SMTP Ready'))
+        .catch((err) =>
+          this.logger.warn('⚠️ SMTP Verify Failed: ' + err),
+        );
     }
 
-    if (configuredFromEmail && configuredFromEmail !== this.fromEmail && !this.useSmtp) {
-      this.logger.warn(
-        `EMAIL_FROM="${configuredFromEmail}" is not a supported Resend sender. Falling back to ${this.fromEmail}.`,
-      );
-    }
-
-    const activeProvider = this.useSmtp ? 'SMTP' : 'Resend';
-    this.logger.log(`Mail service initialized with provider: ${activeProvider}, from: ${this.fromEmail}`);
+    this.logger.log(
+      `🚀 MailService initialized (SMTP: ${!!this.transporter}, Resend: ${!!this.resend})`,
+    );
   }
 
-  async sendRegistrationOtp(email: string, name: string, otp: string): Promise<void> {
-    try {
-      this.logger.log(`Attempting to send registration OTP to ${email}`);
-      await this.sendEmail({
-        to: email,
-        subject: 'The Vault: Verify Your Membership',
-        html: `
-          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 30px; background: #fafaf8; border: 1px solid #eaeaea;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <p style="font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6em; color: #b8905b; margin: 0;">Shoukhinabesh</p>
-            </div>
-            <h2 style="color: #111; font-family: Georgia, serif; font-size: 24px; font-weight: normal; text-align: center; margin-bottom: 30px;">Welcome to The Vault</h2>
-            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">Dear ${name},</p>
-            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 30px;">To finalize your membership and secure your exclusive access, please enter the following verification code:</p>
-            <div style="font-size: 32px; font-weight: 300; letter-spacing: 12px; color: #111; text-align: center; padding: 25px; background: #fff; border: 1px solid #eee; margin: 30px 0;">
-              ${otp}
-            </div>
-            <p style="color: #888; font-size: 12px; text-align: center; margin-top: 30px;">This exclusive code will expire in 10 minutes.</p>
-            <p style="color: #888; font-size: 12px; text-align: center;">If you did not request to join, please disregard this communication.</p>
-            <hr style="border: none; border-top: 1px solid #ddd; margin: 40px 0 20px 0;" />
-            <p style="font-size: 10px; color: #aaa; text-align: center; text-transform: uppercase; letter-spacing: 0.2em;">Shoukhinabesh &middot; Curated Destiny</p>
-          </div>
-        `,
-      });
-      this.logger.log(`✓ Registration OTP sent successfully to ${email}`);
-    } catch (err) {
-      this.logger.error(`✗ Failed to send registration OTP to ${email}`, this.getErrorMessage(err));
-    }
+  // ================= PUBLIC API =================
+
+  sendPasswordResetOtp(email: string, name: string, otp: string) {
+    this.sendEmailNonBlocking({
+      to: email,
+      subject: 'Reset Your Password',
+      html: this.otpTemplate(name, otp),
+      text: `Your OTP is: ${otp}`,
+    });
   }
 
-  async sendPasswordResetOtp(email: string, name: string, otp: string): Promise<void> {
-    try {
-      this.logger.log(`Attempting to send password reset OTP to ${email}`);
-      await this.sendEmail({
-        to: email,
-        subject: 'The Vault: Secure Your Account',
-        html: `
-          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 30px; background: #fafaf8; border: 1px solid #eaeaea;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <p style="font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6em; color: #b8905b; margin: 0;">Shoukhinabesh</p>
-            </div>
-            <h2 style="color: #111; font-family: Georgia, serif; font-size: 24px; font-weight: normal; text-align: center; margin-bottom: 30px;">Reset Your Secret Key</h2>
-            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">Dear ${name},</p>
-            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 30px;">A request to reset your access key has been initiated. Use the following code to securely update your credentials:</p>
-            <div style="font-size: 32px; font-weight: 300; letter-spacing: 12px; color: #111; text-align: center; padding: 25px; background: #fff; border: 1px solid #eee; margin: 30px 0;">
-              ${otp}
-            </div>
-            <p style="color: #888; font-size: 12px; text-align: center; margin-top: 30px;">This secure code will expire in 10 minutes.</p>
-            <p style="color: #888; font-size: 12px; text-align: center;">If you did not authorize this request, your vault remains secure and no further action is needed.</p>
-            <hr style="border: none; border-top: 1px solid #ddd; margin: 40px 0 20px 0;" />
-            <p style="font-size: 10px; color: #aaa; text-align: center; text-transform: uppercase; letter-spacing: 0.2em;">Shoukhinabesh &middot; Curated Destiny</p>
-          </div>
-        `,
-      });
-      this.logger.log(`✓ Password reset OTP sent successfully to ${email}`);
-    } catch (err) {
-      this.logger.error(`✗ Failed to send password reset OTP to ${email}`, this.getErrorMessage(err));
-    }
+  sendRegistrationOtp(email: string, name: string, otp: string) {
+    this.sendEmailNonBlocking({
+      to: email,
+      subject: 'Verify Your Account',
+      html: this.otpTemplate(name, otp),
+      text: `Your OTP is: ${otp}`,
+    });
   }
 
-  async sendOrderConfirmation(
-    email: string,
-    name: string,
-    orderNumber: string,
-    total: number,
-  ): Promise<void> {
-    try {
-      this.logger.log(`Attempting to send order confirmation to ${email} for order ${orderNumber}`);
-      await this.sendEmail({
-        to: email,
-        subject: `Order Confirmed — ${orderNumber}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f9f9f9; border-radius: 8px;">
-            <h2 style="color: #1a1a2e;">Order Confirmed!</h2>
-            <p>Hello <strong>${name}</strong>,</p>
-            <p>Your order <strong>${orderNumber}</strong> has been placed successfully!</p>
-            <p>Total: <strong>&#2547;${total.toFixed(2)}</strong></p>
-            <p>You will receive a shipping update soon.</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-            <p style="font-size: 12px; color: #888;">Shoukhinabesh &middot; shoukhinabesh.com</p>
-          </div>
-        `,
-      });
-      this.logger.log(`✓ Order confirmation sent successfully to ${email}`);
-    } catch (err) {
-      this.logger.error(`✗ Failed to send order confirmation to ${email}`, this.getErrorMessage(err));
-    }
+  // ================= NON-BLOCKING WRAPPER =================
+
+  private sendEmailNonBlocking(data: {
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+  }) {
+    this.sendEmail(data).catch((err) => {
+      this.logger.error('❌ Email error:', err);
+    });
   }
+
+  // ================= CORE =================
 
   private async sendEmail({
     to,
     subject,
     html,
+    text,
   }: {
     to: string;
     subject: string;
     html: string;
-  }): Promise<void> {
-    // Prefer SMTP if configured
+    text: string;
+  }) {
+    this.logger.log(`📨 Sending email → ${to}`);
+
+    // -------- SMTP FIRST --------
     if (this.transporter) {
-      const info = await this.transporter.sendMail({
+      try {
+        const result = await Promise.race([
+          this.transporter.sendMail({
+            from: `Shoukhinabesh <${this.fromEmail}>`,
+            to,
+            subject,
+            html,
+            text,
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('SMTP timeout')), 6000),
+          ),
+        ]);
+
+        this.logger.log(`✅ SMTP sent ${(result as any).messageId}`);
+        return;
+      } catch (err) {
+        this.logger.warn('⚠️ SMTP failed → fallback to Resend');
+      }
+    }
+
+    // -------- RESEND FALLBACK --------
+    if (this.resend) {
+      const res = await this.resend.emails.send({
         from: `Shoukhinabesh <${this.fromEmail}>`,
         to,
         subject,
         html,
+        text,
       });
 
-      this.logger.log(`SMTP message sent: ${info.messageId} to ${to}`);
+      if (res.error) {
+        throw new Error(res.error.message);
+      }
+
+      this.logger.log(`✅ Resend sent ${res.data?.id}`);
       return;
     }
 
-    if (!this.resend) {
-      throw new Error('No email provider configured. Set SMTP_* or RESEND_API_KEY in env.');
-    }
-
-    const response = await this.resend.emails.send({
-      from: `Shoukhinabesh <${this.fromEmail}>`,
-      to,
-      subject,
-      html,
-    });
-
-    if (response.error) {
-      throw new Error(`${response.error.name}: ${response.error.message}`);
-    }
-
-    if (response.data?.id) {
-      this.logger.log(`Resend accepted message ${response.data.id} for ${to}`);
-    }
+    throw new Error('No email provider configured');
   }
 
-  private getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
+  // ================= TEMPLATE =================
 
-    return String(error);
-  }
+  private otpTemplate(name: string, otp: string): string {
+    return `
+      <div style="font-family: Arial; max-width:500px; margin:auto; padding:20px;">
+        <h2>Verify Your Account</h2>
+        <p>Hello ${name || 'User'},</p>
 
-  private resolveFromEmail(email?: string): string {
-    if (!email) {
-      return this.defaultFromEmail;
-    }
+        <p>Your OTP code is:</p>
 
-    const normalizedEmail = email.toLowerCase();
-    const parts = normalizedEmail.split('@');
+        <div style="
+          font-size: 30px;
+          font-weight: bold;
+          text-align: center;
+          letter-spacing: 6px;
+          margin: 20px 0;
+        ">
+          ${otp.split('').join(' ')}
+        </div>
 
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      return this.defaultFromEmail;
-    }
-
-    const blockedDomains = [
-      'gmail.com',
-      'yahoo.com',
-      'hotmail.com',
-      'outlook.com',
-      'icloud.com',
-      'aol.com',
-      'proton.me',
-      'protonmail.com',
-      'live.com',
-      'msn.com',
-    ];
-
-    // If SMTP is explicitly configured, allow popular personal providers (gmail, etc.)
-    if (!this.useSmtp && blockedDomains.some((domain) => parts[1] === domain || parts[1].endsWith(`.${domain}`))) {
-      return this.defaultFromEmail;
-    }
-
-    return email;
+        <p>This code expires in 10 minutes.</p>
+      </div>
+    `;
   }
 }
