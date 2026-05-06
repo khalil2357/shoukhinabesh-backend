@@ -1,26 +1,65 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly resend: Resend | null;
+  private transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null = null;
   private readonly fromEmail: string;
+  private readonly defaultFromEmail = 'onboarding@resend.dev';
+  private readonly useSmtp: boolean;
 
   constructor(private config: ConfigService) {
     const resendApiKey = this.config.get<string>('RESEND_API_KEY');
-    this.fromEmail =
-      this.config.get<string>('EMAIL_FROM') ?? 'no-reply@shoukhinabesh.com';
+    const configuredFromEmail = this.config.get<string>('EMAIL_FROM')?.trim();
+    const smtpHost = this.config.get<string>('SMTP_HOST');
+    const smtpPort = this.config.get<string>('SMTP_PORT');
+    const smtpUser = this.config.get<string>('SMTP_USER');
+    const smtpPassRaw = this.config.get<string>('SMTP_PASS');
+
+    // normalize SMTP password: app passwords are often displayed with spaces
+    const smtpPass = smtpPassRaw ? smtpPassRaw.replace(/\s+/g, '') : undefined;
+
+    this.useSmtp = Boolean(smtpHost && smtpUser && smtpPass);
+    this.fromEmail = this.resolveFromEmail(configuredFromEmail);
 
     if (!resendApiKey) {
-      this.logger.warn('RESEND_API_KEY is not configured. Email delivery will fail.');
+      this.logger.warn('RESEND_API_KEY is not configured. Resend fallback will be disabled.');
       this.resend = null;
     } else {
       this.resend = new Resend(resendApiKey);
     }
 
-    this.logger.log(`Mail service initialized with Resend sender: ${this.fromEmail}`);
+    if (this.useSmtp) {
+      const portNum = smtpPort ? Number(smtpPort) : 465;
+      this.transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: portNum,
+        secure: portNum === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+
+      // verify transporter async and log result
+      this.transporter.verify()
+        .then(() => this.logger.log('SMTP transporter verified successfully'))
+        .catch((err) => this.logger.warn('SMTP transporter verification failed: ' + String(err)));
+    }
+
+    if (configuredFromEmail && configuredFromEmail !== this.fromEmail && !this.useSmtp) {
+      this.logger.warn(
+        `EMAIL_FROM="${configuredFromEmail}" is not a supported Resend sender. Falling back to ${this.fromEmail}.`,
+      );
+    }
+
+    const activeProvider = this.useSmtp ? 'SMTP' : 'Resend';
+    this.logger.log(`Mail service initialized with provider: ${activeProvider}, from: ${this.fromEmail}`);
   }
 
   async sendRegistrationOtp(email: string, name: string, otp: string): Promise<void> {
@@ -121,8 +160,21 @@ export class MailService {
     subject: string;
     html: string;
   }): Promise<void> {
+    // Prefer SMTP if configured
+    if (this.transporter) {
+      const info = await this.transporter.sendMail({
+        from: `Shoukhinabesh <${this.fromEmail}>`,
+        to,
+        subject,
+        html,
+      });
+
+      this.logger.log(`SMTP message sent: ${info.messageId} to ${to}`);
+      return;
+    }
+
     if (!this.resend) {
-      throw new Error('RESEND_API_KEY is missing. Configure it in the deployment environment.');
+      throw new Error('No email provider configured. Set SMTP_* or RESEND_API_KEY in env.');
     }
 
     const response = await this.resend.emails.send({
@@ -133,9 +185,7 @@ export class MailService {
     });
 
     if (response.error) {
-      throw new Error(
-        `${response.error.name}: ${response.error.message}`,
-      );
+      throw new Error(`${response.error.name}: ${response.error.message}`);
     }
 
     if (response.data?.id) {
@@ -149,5 +199,38 @@ export class MailService {
     }
 
     return String(error);
+  }
+
+  private resolveFromEmail(email?: string): string {
+    if (!email) {
+      return this.defaultFromEmail;
+    }
+
+    const normalizedEmail = email.toLowerCase();
+    const parts = normalizedEmail.split('@');
+
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      return this.defaultFromEmail;
+    }
+
+    const blockedDomains = [
+      'gmail.com',
+      'yahoo.com',
+      'hotmail.com',
+      'outlook.com',
+      'icloud.com',
+      'aol.com',
+      'proton.me',
+      'protonmail.com',
+      'live.com',
+      'msn.com',
+    ];
+
+    // If SMTP is explicitly configured, allow popular personal providers (gmail, etc.)
+    if (!this.useSmtp && blockedDomains.some((domain) => parts[1] === domain || parts[1].endsWith(`.${domain}`))) {
+      return this.defaultFromEmail;
+    }
+
+    return email;
   }
 }
