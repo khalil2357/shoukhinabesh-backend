@@ -8,19 +8,32 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
 
   constructor(private config: ConfigService) {
+    const smtpHost = this.config.get<string>('SMTP_HOST');
+    const smtpUser = this.config.get<string>('SMTP_USER');
+    const smtpPass = this.config.get<string>('SMTP_PASS');
+
+    if (!smtpHost || !smtpUser || !smtpPass) {
+      this.logger.warn(
+        `SMTP not fully configured. Host: ${!!smtpHost}, User: ${!!smtpUser}, Pass: ${!!smtpPass}`,
+      );
+    }
+
     this.transporter = nodemailer.createTransport({
-      host: this.config.get<string>('SMTP_HOST'),
+      host: smtpHost,
       port: this.config.get<number>('SMTP_PORT', 587),
       secure: false,
       auth: {
-        user: this.config.get<string>('SMTP_USER'),
-        pass: this.config.get<string>('SMTP_PASS'),
+        user: smtpUser,
+        pass: smtpPass,
       },
     });
+
+    this.logger.log(`Mail service initialized with SMTP host: ${smtpHost}`);
   }
 
   async sendRegistrationOtp(email: string, name: string, otp: string): Promise<void> {
     try {
+      this.logger.log(`Attempting to send registration OTP to ${email}`);
       await this.transporter.sendMail({
         from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
         to: email,
@@ -43,13 +56,15 @@ export class MailService {
           </div>
         `,
       });
+      this.logger.log(`✓ Registration OTP sent successfully to ${email}`);
     } catch (err) {
-      this.logger.error(`Failed to send registration OTP to ${email}`, err);
+      this.logger.error(`✗ Failed to send registration OTP to ${email}`, err.message || err);
     }
   }
 
   async sendPasswordResetOtp(email: string, name: string, otp: string): Promise<void> {
     try {
+      this.logger.log(`Attempting to send password reset OTP to ${email}`);
       await this.transporter.sendMail({
         from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
         to: email,
@@ -72,8 +87,9 @@ export class MailService {
           </div>
         `,
       });
+      this.logger.log(`✓ Password reset OTP sent successfully to ${email}`);
     } catch (err) {
-      this.logger.error(`Failed to send password reset OTP to ${email}`, err);
+      this.logger.error(`✗ Failed to send password reset OTP to ${email}`, err.message || err);
     }
   }
 
@@ -84,6 +100,7 @@ export class MailService {
     total: number,
   ): Promise<void> {
     try {
+      this.logger.log(`Attempting to send order confirmation to ${email} for order ${orderNumber}`);
       await this.transporter.sendMail({
         from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
         to: email,
@@ -100,8 +117,9 @@ export class MailService {
           </div>
         `,
       });
+      this.logger.log(`✓ Order confirmation sent successfully to ${email}`);
     } catch (err) {
-      this.logger.error(`Failed to send order confirmation to ${email}`, err);
+      this.logger.error(`✗ Failed to send order confirmation to ${email}`, err.message || err);
     }
   }
 }
