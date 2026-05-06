@@ -195,13 +195,31 @@ export class OrdersService {
   }
 
   async updateStatus(id: string, dto: UpdateOrderStatusDto) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
+    const order = await this.prisma.order.findUnique({ 
+      where: { id },
+      include: { customer: true }
+    });
     if (!order) throw new NotFoundException('Order not found');
 
-    return this.prisma.order.update({
+    const updatedOrder = await this.prisma.order.update({
       where: { id },
       data: { status: dto.status },
     });
+
+    if (dto.status === OrderStatus.CONFIRMED && order.status !== OrderStatus.CONFIRMED) {
+      try {
+        await this.mailService.sendOrderConfirmation(
+          order.customer.email,
+          order.customer.name,
+          order.orderNumber,
+          order.total,
+        );
+      } catch (error) {
+        console.error('Failed to send order confirmation email:', error);
+      }
+    }
+
+    return updatedOrder;
   }
 
   async cancelOrder(id: string, userId: string, role: Role) {
