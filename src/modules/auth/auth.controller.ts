@@ -14,6 +14,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   RefreshTokenDto,
+  VerifyRegistrationDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -23,10 +24,17 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @ApiOperation({ summary: 'Register a new customer account' })
+  @ApiOperation({ summary: 'Register a new customer account (sends OTP)' })
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @ApiOperation({ summary: 'Verify registration OTP' })
+  @HttpCode(HttpStatus.OK)
+  @Post('verify-registration')
+  verifyRegistration(@Body() dto: VerifyRegistrationDto) {
+    return this.authService.verifyRegistration(dto);
   }
 
   @ApiOperation({ summary: 'Login and receive JWT tokens' })

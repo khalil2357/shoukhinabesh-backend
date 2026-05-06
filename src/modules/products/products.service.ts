@@ -24,9 +24,7 @@ export class ProductsService {
   // ─────────────────────────────────────────────
   async create(dto: CreateProductDto, vendorId: string) {
     const slug =
-      slugify(dto.name, { lower: true, strict: true }) +
-      '-' +
-      Date.now();
+      slugify(dto.name, { lower: true, strict: true }) + '-' + Date.now();
 
     return this.prisma.product.create({
       data: {
@@ -165,12 +163,7 @@ export class ProductsService {
   // ─────────────────────────────────────────────
   // UPDATE PRODUCT (ROLE BASED ACCESS)
   // ─────────────────────────────────────────────
-  async update(
-    id: string,
-    dto: UpdateProductDto,
-    userId: string,
-    role: Role,
-  ) {
+  async update(id: string, dto: UpdateProductDto, userId: string, role: Role) {
     if (!isValidObjectId(id)) {
       throw new BadRequestException('Invalid product ID');
     }
@@ -193,9 +186,7 @@ export class ProductsService {
 
     if (dto.name) {
       data.slug =
-        slugify(dto.name, { lower: true, strict: true }) +
-        '-' +
-        Date.now();
+        slugify(dto.name, { lower: true, strict: true }) + '-' + Date.now();
     }
 
     return this.prisma.product.update({

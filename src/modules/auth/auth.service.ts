@@ -14,6 +14,7 @@ import {
   LoginDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  VerifyRegistrationDto,
 } from './dto/auth.dto';
 import { MailService } from '../mail/mail.service';
 
@@ -32,18 +33,87 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (existing) throw new ConflictException('Email already in use');
 
-    const hashed = await bcrypt.hash(dto.password, 12);
-    const user = await this.prisma.user.create({
-      data: { name: dto.name, email: dto.email, password: hashed },
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+    if (existing) {
+      if (existing.isVerified) {
+        throw new ConflictException('Email already in use');
+      } else {
+        const hashed = await bcrypt.hash(dto.password, 12);
+        await this.prisma.user.update({
+          where: { email: dto.email },
+          data: { name: dto.name, password: hashed },
+        });
+      }
+    } else {
+      const hashed = await bcrypt.hash(dto.password, 12);
+      await this.prisma.user.create({
+        data: {
+          name: dto.name,
+          email: dto.email,
+          password: hashed,
+          isVerified: false,
+        },
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
     });
 
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
+    // Invalidate old OTPs
+    if (user) {
+      await this.prisma.otpCode.updateMany({
+        where: { userId: user.id, used: false },
+        data: { used: true },
+      });
 
-    return { user, ...tokens };
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      await this.prisma.otpCode.create({
+        data: { userId: user.id, code, expiresAt },
+      });
+
+      await this.mail.sendRegistrationOtp(user.email, user.name, code);
+    }
+
+    return { message: 'OTP sent to email. Please verify.' };
+  }
+
+  // ─── Verify Registration ───────────────────────────────────────────────────
+
+  async verifyRegistration(dto: VerifyRegistrationDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (!user) throw new BadRequestException('Invalid request');
+    if (user.isVerified)
+      throw new BadRequestException('User is already verified');
+
+    const otpRecord = await this.prisma.otpCode.findFirst({
+      where: {
+        userId: user.id,
+        code: dto.otp,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!otpRecord)
+      throw new BadRequestException('OTP is invalid or has expired');
+
+    await this.prisma.$transaction([
+      this.prisma.otpCode.update({
+        where: { id: otpRecord.id },
+        data: { used: true },
+      }),
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { isVerified: true },
+      }),
+    ]);
+
+    return { message: 'Registration successful. You can now login.' };
   }
 
   // ─── Login ─────────────────────────────────────────────────────────────────
@@ -54,6 +124,9 @@ export class AuthService {
     });
     if (!user || !user.isActive)
       throw new UnauthorizedException('Invalid credentials');
+
+    if (!user.isVerified)
+      throw new UnauthorizedException('Please verify your email to login.');
 
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
@@ -84,8 +157,7 @@ export class AuthService {
       throw new UnauthorizedException('Session expired. Please log in again.');
 
     const match = await bcrypt.compare(token, user.refreshToken);
-    if (!match)
-      throw new UnauthorizedException('Invalid refresh token');
+    if (!match) throw new UnauthorizedException('Invalid refresh token');
 
     const tokens = await this.generateTokens(user.id, user.email, user.role);
     await this.storeRefreshToken(user.id, tokens.refreshToken);
@@ -110,7 +182,8 @@ export class AuthService {
       where: { email: dto.email },
     });
     // Always return success to prevent email enumeration
-    if (!user) return { message: 'If that email exists, an OTP has been sent.' };
+    if (!user)
+      return { message: 'If that email exists, an OTP has been sent.' };
 
     // Invalidate old OTPs
     await this.prisma.otpCode.updateMany({
@@ -125,7 +198,7 @@ export class AuthService {
       data: { userId: user.id, code, expiresAt },
     });
 
-    await this.mail.sendOtp(user.email, user.name, code);
+    await this.mail.sendPasswordResetOtp(user.email, user.name, code);
 
     return { message: 'If that email exists, an OTP has been sent.' };
   }

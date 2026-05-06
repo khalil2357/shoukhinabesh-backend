@@ -11,11 +11,11 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-  origin: [
-    'http://localhost:5173',
-    'http://192.168.0.100:5173',
-    'https://shoukhinabesh-frontend.vercel.app'
-  ],
+    origin: [
+      'http://localhost:5173',
+      'http://192.168.0.100:5173',
+      'https://shoukhinabesh-frontend.vercel.app',
+    ],
     credentials: true,
   });
 

@@ -33,10 +33,20 @@ export class CouponsService {
   async findAll(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [coupons, total] = await Promise.all([
-      this.prisma.coupon.findMany({ skip, take: limit, orderBy: { createdAt: 'desc' } }),
+      this.prisma.coupon.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.coupon.count(),
     ]);
-    return { coupons, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      coupons,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string) {

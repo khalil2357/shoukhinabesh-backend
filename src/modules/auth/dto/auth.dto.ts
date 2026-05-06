@@ -62,3 +62,14 @@ export class RefreshTokenDto {
   @IsNotEmpty()
   refreshToken: string;
 }
+
+export class VerifyRegistrationDto {
+  @ApiProperty({ example: 'ibrahim@shoukhinabesh.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  otp: string;
+}

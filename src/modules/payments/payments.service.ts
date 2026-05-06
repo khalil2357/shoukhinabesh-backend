@@ -25,7 +25,9 @@ export class PaymentsService {
   ) {
     const stripeKey = this.config.get<string>('STRIPE_SECRET_KEY');
     if (!stripeKey) {
-      this.logger.warn('STRIPE_SECRET_KEY is missing. Stripe payments will not work.');
+      this.logger.warn(
+        'STRIPE_SECRET_KEY is missing. Stripe payments will not work.',
+      );
     } else {
       this.stripe = new Stripe(stripeKey);
     }
@@ -34,7 +36,9 @@ export class PaymentsService {
   // ─── Stripe ────────────────────────────────────────────────────────────────
 
   async createStripeIntent(orderId: string, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException('Order not found');
     if (order.customerId !== userId)
       throw new BadRequestException('Order does not belong to you');
@@ -52,13 +56,11 @@ export class PaymentsService {
     return { clientSecret: intent.client_secret };
   }
 
-  async handleStripeWebhook(
-    rawBody: Buffer,
-    signature: string,
-  ): Promise<void> {
+  async handleStripeWebhook(rawBody: Buffer, signature: string): Promise<void> {
     if (!this.stripe) return;
 
-    const webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET') ?? '';
+    const webhookSecret =
+      this.config.get<string>('STRIPE_WEBHOOK_SECRET') ?? '';
     let event: ReturnType<typeof this.stripe.webhooks.constructEvent>;
 
     try {
@@ -74,10 +76,13 @@ export class PaymentsService {
 
     if (event.type === 'payment_intent.succeeded') {
       const intent = event.data.object;
-      const orderId = (intent as { metadata?: Record<string, string> }).metadata?.orderId;
+      const orderId = (intent as { metadata?: Record<string, string> }).metadata
+        ?.orderId;
       if (orderId) {
         await this.ordersService.completeOrder(orderId);
-        this.logger.log(`Order ${orderId} marked as PAID and finalized via Stripe`);
+        this.logger.log(
+          `Order ${orderId} marked as PAID and finalized via Stripe`,
+        );
       }
     }
   }
@@ -100,7 +105,8 @@ export class PaymentsService {
     const storePassword = this.config.get<string>('SSLCZ_STORE_PASS') ?? '';
     const isLive = this.config.get<boolean>('SSLCZ_IS_LIVE') ?? false;
 
-    const apiBaseUrl = this.config.get<string>('API_BASE_URL') ?? 'http://localhost:3000';
+    const apiBaseUrl =
+      this.config.get<string>('API_BASE_URL') ?? 'http://localhost:3000';
 
     const data = {
       total_amount: order.total,

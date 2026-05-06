@@ -19,29 +19,61 @@ export class MailService {
     });
   }
 
-  async sendOtp(email: string, name: string, otp: string): Promise<void> {
+  async sendRegistrationOtp(email: string, name: string, otp: string): Promise<void> {
     try {
       await this.transporter.sendMail({
         from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
         to: email,
-        subject: 'Your Password Reset OTP',
+        subject: 'The Vault: Verify Your Membership',
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f9f9f9; border-radius: 8px;">
-            <h2 style="color: #1a1a2e;">Password Reset</h2>
-            <p>Hello <strong>${name}</strong>,</p>
-            <p>Your one-time password (OTP) for password reset is:</p>
-            <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #e94560; text-align: center; padding: 20px; background: #fff; border-radius: 8px; margin: 20px 0;">
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 30px; background: #fafaf8; border: 1px solid #eaeaea;">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <p style="font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6em; color: #b8905b; margin: 0;">Shoukhinabesh</p>
+            </div>
+            <h2 style="color: #111; font-family: Georgia, serif; font-size: 24px; font-weight: normal; text-align: center; margin-bottom: 30px;">Welcome to The Vault</h2>
+            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">Dear ${name},</p>
+            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 30px;">To finalize your membership and secure your exclusive access, please enter the following verification code:</p>
+            <div style="font-size: 32px; font-weight: 300; letter-spacing: 12px; color: #111; text-align: center; padding: 25px; background: #fff; border: 1px solid #eee; margin: 30px 0;">
               ${otp}
             </div>
-            <p>This OTP expires in <strong>10 minutes</strong>.</p>
-            <p>If you did not request this, please ignore this email.</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-            <p style="font-size: 12px; color: #888;">Shoukhinabesh &middot; shoukhinabesh.com</p>
+            <p style="color: #888; font-size: 12px; text-align: center; margin-top: 30px;">This exclusive code will expire in 10 minutes.</p>
+            <p style="color: #888; font-size: 12px; text-align: center;">If you did not request to join, please disregard this communication.</p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 40px 0 20px 0;" />
+            <p style="font-size: 10px; color: #aaa; text-align: center; text-transform: uppercase; letter-spacing: 0.2em;">Shoukhinabesh &middot; Curated Destiny</p>
           </div>
         `,
       });
     } catch (err) {
-      this.logger.error(`Failed to send OTP email to ${email}`, err);
+      this.logger.error(`Failed to send registration OTP to ${email}`, err);
+    }
+  }
+
+  async sendPasswordResetOtp(email: string, name: string, otp: string): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: `"Shoukhinabesh" <${this.config.get('EMAIL_FROM')}>`,
+        to: email,
+        subject: 'The Vault: Secure Your Account',
+        html: `
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 30px; background: #fafaf8; border: 1px solid #eaeaea;">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <p style="font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6em; color: #b8905b; margin: 0;">Shoukhinabesh</p>
+            </div>
+            <h2 style="color: #111; font-family: Georgia, serif; font-size: 24px; font-weight: normal; text-align: center; margin-bottom: 30px;">Reset Your Secret Key</h2>
+            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">Dear ${name},</p>
+            <p style="color: #444; font-size: 14px; line-height: 1.6; margin-bottom: 30px;">A request to reset your access key has been initiated. Use the following code to securely update your credentials:</p>
+            <div style="font-size: 32px; font-weight: 300; letter-spacing: 12px; color: #111; text-align: center; padding: 25px; background: #fff; border: 1px solid #eee; margin: 30px 0;">
+              ${otp}
+            </div>
+            <p style="color: #888; font-size: 12px; text-align: center; margin-top: 30px;">This secure code will expire in 10 minutes.</p>
+            <p style="color: #888; font-size: 12px; text-align: center;">If you did not authorize this request, your vault remains secure and no further action is needed.</p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 40px 0 20px 0;" />
+            <p style="font-size: 10px; color: #aaa; text-align: center; text-transform: uppercase; letter-spacing: 0.2em;">Shoukhinabesh &middot; Curated Destiny</p>
+          </div>
+        `,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send password reset OTP to ${email}`, err);
     }
   }
 

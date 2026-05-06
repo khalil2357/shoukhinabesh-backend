@@ -29,7 +29,9 @@ export class OrdersService {
     let subTotal = 0;
     for (const item of cart.items) {
       if (item.product.stock < item.quantity) {
-        throw new BadRequestException(`Product ${item.product.name} is out of stock`);
+        throw new BadRequestException(
+          `Product ${item.product.name} is out of stock`,
+        );
       }
       subTotal += item.product.price * item.quantity;
     }
@@ -39,11 +41,17 @@ export class OrdersService {
       const coupon = await this.prisma.coupon.findUnique({
         where: { code: dto.couponCode.toUpperCase() },
       });
-      if (coupon && coupon.isActive && new Date() < coupon.validTo && subTotal >= coupon.minOrder) {
-        discount = coupon.discountType === 'percent' 
-          ? (subTotal * coupon.discountValue) / 100 
-          : coupon.discountValue;
-        
+      if (
+        coupon &&
+        coupon.isActive &&
+        new Date() < coupon.validTo &&
+        subTotal >= coupon.minOrder
+      ) {
+        discount =
+          coupon.discountType === 'percent'
+            ? (subTotal * coupon.discountValue) / 100
+            : coupon.discountValue;
+
         await this.prisma.coupon.update({
           where: { id: coupon.id },
           data: { usageCount: { increment: 1 } },
@@ -195,7 +203,6 @@ export class OrdersService {
       data: { status: dto.status },
     });
   }
-
 
   async cancelOrder(id: string, userId: string, role: Role) {
     const order = await this.prisma.order.findUnique({

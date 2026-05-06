@@ -41,6 +41,7 @@ model User {
   password     String
   role         Role     @default(CUSTOMER)
   isActive     Boolean  @default(true)
+  isVerified   Boolean  @default(false)
   refreshToken String?
   avatar       String?
   createdAt    DateTime @default(now())

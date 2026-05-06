@@ -36,7 +36,9 @@ export class ReviewsController {
     );
   }
 
-  @ApiOperation({ summary: 'Create a review (Customer — delivered orders only)' })
+  @ApiOperation({
+    summary: 'Create a review (Customer — delivered orders only)',
+  })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post()

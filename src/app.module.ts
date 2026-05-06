@@ -19,7 +19,6 @@ import { HealthModule } from './modules/health/health.module';
 import { MailModule } from './modules/mail/mail.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),

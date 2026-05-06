@@ -28,10 +28,7 @@ export class OrdersController {
   @Roles(Role.CUSTOMER, Role.VENDOR)
   @UseGuards(RolesGuard)
   @Post()
-  placeOrder(
-    @CurrentUser('id') userId: string,
-    @Body() dto: PlaceOrderDto,
-  ) {
+  placeOrder(@CurrentUser('id') userId: string, @Body() dto: PlaceOrderDto) {
     return this.ordersService.placeOrder(userId, dto);
   }
 
@@ -53,10 +50,7 @@ export class OrdersController {
   @Roles(Role.ADMIN)
   @UseGuards(RolesGuard)
   @Get()
-  getAllOrders(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  getAllOrders(@Query('page') page?: string, @Query('limit') limit?: string) {
     return this.ordersService.getAllOrders(
       page ? parseInt(page) : 1,
       limit ? parseInt(limit) : 20,
@@ -77,10 +71,7 @@ export class OrdersController {
   @Roles(Role.ADMIN, Role.VENDOR)
   @UseGuards(RolesGuard)
   @Patch(':id/status')
-  updateStatus(
-    @Param('id') id: string,
-    @Body() dto: UpdateOrderStatusDto,
-  ) {
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {
     return this.ordersService.updateStatus(id, dto);
   }
 
