@@ -29,7 +29,7 @@ export class MailService {
 
     // SMTP init
     if (smtpHost && smtpUser && smtpPass) {
-      const useSecure = smtpPort === 465;
+      const useSecure = smtpPort === 587; // Mailtrap recommends STARTTLS on 587
       this.transporter = nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
@@ -42,22 +42,22 @@ export class MailService {
           // Mailtrap requires STARTTLS on 587 — nodemailer will upgrade automatically
           rejectUnauthorized: false,
         },
-        connectionTimeout: 5000,
-        socketTimeout: 5000,
+        connectionTimeout: 10000,
+        socketTimeout: 10000,
       });
 
       this.transporter
         .verify()
-        .then(() => this.logger.log(`✅ SMTP Ready (${smtpHost}:${smtpPort})`))
-        .catch((err) => this.logger.warn('⚠️ SMTP Verify Failed: ' + this.getErrorMessage(err)));
+        .then(() => this.logger.log(`SMTP Ready (${smtpHost}:${smtpPort})`))
+        .catch((err) => this.logger.warn('SMTP Verify Failed: ' + this.getErrorMessage(err)));
     }
 
     // Mailtrap init (API)
     if (mailtrapToken) {
       this.mailtrapToken = mailtrapToken.trim();
-      this.logger.log('✅ Mailtrap token loaded');
+      this.logger.log('Mailtrap token loaded');
     }
-    this.logger.log(`🚀 MailService initialized (SMTP: ${!!this.transporter}, Mailtrap API: ${!!this.mailtrapToken})`);
+    this.logger.log(`MailService initialized (SMTP: ${!!this.transporter}, Mailtrap API: ${!!this.mailtrapToken})`);
   }
 
   // ================= PUBLIC API =================
@@ -108,7 +108,7 @@ export class MailService {
     text: string;
   }) {
     this.sendEmail(data).catch((err) => {
-      this.logger.error('❌ Email error: ' + this.getErrorMessage(err));
+      this.logger.error('Email error: ' + this.getErrorMessage(err));
     });
   }
 
@@ -125,7 +125,7 @@ export class MailService {
     html: string;
     text: string;
   }) {
-    this.logger.log(`📨 Sending email → ${to}`);
+    this.logger.log(`Sending email → ${to}`);
 
     // -------- SMTP FIRST --------
     if (this.transporter) {
@@ -143,15 +143,15 @@ export class MailService {
           ),
         ]);
 
-        this.logger.log(`✅ SMTP sent ${(result as any).messageId}`);
+        this.logger.log(`SMTP sent ${(result as any).messageId}`);
         return;
       } catch (err) {
-        this.logger.error('⚠️ SMTP send failed: ' + this.getErrorMessage(err));
+        this.logger.error('SMTP send failed: ' + this.getErrorMessage(err));
 
         // Try Mailtrap Send API if available
         if (this.mailtrapToken) {
           try {
-            this.logger.log('🔁 Falling back to Mailtrap Send API');
+            this.logger.log('Falling back to Mailtrap Send API');
 
             const payload = {
               from: { email: this.fromEmail, name: 'Shoukhinabesh' },
@@ -173,13 +173,13 @@ export class MailService {
 
             const bodyJson = await res.text();
             if (!res.ok) {
-              this.logger.error('❌ Mailtrap API error: ' + res.status + ' ' + bodyJson);
+              this.logger.error('Mailtrap API error: ' + res.status + ' ' + bodyJson);
             } else {
-              this.logger.log(`✅ Mailtrap sent to ${to}: ${bodyJson}`);
+              this.logger.log(`Mailtrap sent to ${to}: ${bodyJson}`);
               return;
             }
           } catch (mtErr) {
-            this.logger.error('❌ Mailtrap send failed: ' + this.getErrorMessage(mtErr));
+            this.logger.error('Mailtrap send failed: ' + this.getErrorMessage(mtErr));
           }
         }
       }
@@ -221,7 +221,7 @@ export class MailService {
         await this.sendEmail({ to, subject, html, text: 'Test email' });
         return true;
       } catch (err) {
-        this.logger.error('❌ sendTestEmail failed: ' + this.getErrorMessage(err));
+        this.logger.error('sendTestEmail failed: ' + this.getErrorMessage(err));
         throw err;
       }
     }
