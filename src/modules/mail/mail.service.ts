@@ -7,8 +7,9 @@ import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 export class MailService {
   private readonly logger = new Logger(MailService.name);
 
-  // Resend removed — SMTP-only
+  // Transports
   private transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null = null;
+  private mailtrapToken: string | null = null;
 
   private readonly fromEmail: string;
 
@@ -17,6 +18,7 @@ export class MailService {
     const smtpPort = Number(this.config.get<string>('SMTP_PORT') || 587);
     const smtpUser = this.config.get<string>('SMTP_USER');
     const smtpPass = this.config.get<string>('SMTP_PASS')?.replace(/\s+/g, '');
+    const mailtrapToken = this.config.get<string>('MAILTRAP_API_TOKEN') || this.config.get<string>('API_TOKEN');
 
     this.fromEmail = this.config.get<string>('EMAIL_FROM') || 'no-reply@shoukhinabesh.com';
 
@@ -45,7 +47,12 @@ export class MailService {
         );
     }
 
-    this.logger.log(`🚀 MailService initialized (SMTP: ${!!this.transporter})`);
+    // Mailtrap init (API)
+    if (mailtrapToken) {
+      this.mailtrapToken = mailtrapToken.trim();
+      this.logger.log('✅ Mailtrap token loaded');
+    }
+    this.logger.log(`🚀 MailService initialized (SMTP: ${!!this.transporter}, Mailtrap: ${!!this.mailtrapToken})`);
   }
 
   // ================= PUBLIC API =================
@@ -134,12 +141,47 @@ export class MailService {
         this.logger.log(`✅ SMTP sent ${(result as any).messageId}`);
         return;
       } catch (err) {
-        this.logger.warn('⚠️ SMTP failed → fallback to Resend: ' + this.getErrorMessage(err));
+        this.logger.error('⚠️ SMTP send failed: ' + this.getErrorMessage(err));
+
+        // Try Mailtrap Send API if available
+        if (this.mailtrapToken) {
+          try {
+            this.logger.log('🔁 Falling back to Mailtrap Send API');
+
+            const payload = {
+              from: { email: this.fromEmail, name: 'Shoukhinabesh' },
+              to: [{ email: to }],
+              subject,
+              text,
+              html,
+              category: 'app',
+            };
+
+            const res = await fetch('https://send.api.mailtrap.io/api/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${this.mailtrapToken}`,
+              },
+              body: JSON.stringify(payload),
+            });
+
+            const bodyJson = await res.text();
+            if (!res.ok) {
+              this.logger.error('❌ Mailtrap API error: ' + res.status + ' ' + bodyJson);
+            } else {
+              this.logger.log(`✅ Mailtrap sent to ${to}: ${bodyJson}`);
+              return;
+            }
+          } catch (mtErr) {
+            this.logger.error('❌ Mailtrap send failed: ' + this.getErrorMessage(mtErr));
+          }
+        }
       }
     }
 
-    // If we reach here, SMTP was not available or failed — only SMTP is supported now
-    throw new Error('SMTP transport not configured or failed. Configure SMTP_HOST/SMTP_USER/SMTP_PASS.');
+    // If we reach here, both SMTP and Mailtrap failed/unavailable
+    throw new Error('No working email transport: configure SMTP or MAILTRAP_API_TOKEN.');
   }
 
   // ================= TEMPLATE =================
