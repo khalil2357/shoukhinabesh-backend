@@ -74,7 +74,11 @@ export class AuthService {
         data: { userId: user.id, code, expiresAt },
       });
 
-      await this.mail.sendRegistrationOtp(user.email, user.name, code);
+      try {
+        await this.mail.sendRegistrationOtp(user.email, user.name, code);
+      } catch (err) {
+        console.error('Failed to send registration OTP:', err);
+      }
     }
 
     return { message: 'OTP sent to email. Please verify.' };
@@ -198,7 +202,11 @@ export class AuthService {
       data: { userId: user.id, code, expiresAt },
     });
 
-    await this.mail.sendPasswordResetOtp(user.email, user.name, code);
+    try {
+      await this.mail.sendPasswordResetOtp(user.email, user.name, code);
+    } catch (err) {
+      console.error('Failed to send password reset OTP:', err);
+    }
 
     return { message: 'If that email exists, an OTP has been sent.' };
   }
