@@ -14,7 +14,6 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
-import { UploadModule } from './modules/upload/upload.module';
 import { HealthModule } from './modules/health/health.module';
 import { MailModule } from './modules/mail/mail.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
@@ -33,7 +32,6 @@ import { WishlistModule } from './modules/wishlist/wishlist.module';
     PaymentsModule,
     ReviewsModule,
     CouponsModule,
-    UploadModule,
     HealthModule,
     WishlistModule,
   ],

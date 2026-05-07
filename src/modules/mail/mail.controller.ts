@@ -1,17 +1,33 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { MailService } from './mail.service';
 
 @Controller('mail')
 export class MailController {
-  constructor(private mailService: MailService) {}
+  constructor(private readonly mailService: MailService) {}
 
   @Post('test')
-  async sendTest(@Body() body: { to?: string }) {
-    const to = body?.to;
-    if (!to) throw new BadRequestException('Missing `to` in body');
+  async sendTestMail(
+    @Body()
+    body: {
+      email: string;
+    },
+  ) {
+    return this.mailService.sendTestEmail(body.email);
+  }
 
-    await this.mailService.sendTestEmail(to);
-
-    return { ok: true };
+  @Post('send-otp')
+  async sendOtp(
+    @Body()
+    body: {
+      email: string;
+      name: string;
+      otp: string;
+    },
+  ) {
+    return this.mailService.sendRegistrationOtp(
+      body.email,
+      body.name,
+      body.otp,
+    );
   }
 }
