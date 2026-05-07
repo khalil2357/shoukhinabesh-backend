@@ -13,11 +13,9 @@ export class MailService {
 
   constructor(private config: ConfigService) {
     const smtpHost = this.config.get<string>('SMTP_HOST');
-    const smtpPort =
-      Number(this.config.get<string>('SMTP_PORT')) || 465;
+    const smtpPort = Number(this.config.get<string>('SMTP_PORT')) || 465;
 
-    const smtpUser =
-      this.config.get<string>('SMTP_USER');
+    const smtpUser = this.config.get<string>('SMTP_USER');
 
     const smtpPass = this.config
       .get<string>('SMTP_PASS')
@@ -31,6 +29,7 @@ export class MailService {
       host: smtpHost,
       port: smtpPort,
       secure: smtpPort === 465,
+      requireTLS: smtpPort === 587 || smtpPort === 2525 || smtpPort === 25,
       auth: {
         user: smtpUser,
         pass: smtpPass,
@@ -38,8 +37,8 @@ export class MailService {
       tls: {
         rejectUnauthorized: false,
       },
-      connectionTimeout: 10000,
-      socketTimeout: 10000,
+      connectionTimeout: 20000,
+      socketTimeout: 20000,
     });
 
     this.transporter
