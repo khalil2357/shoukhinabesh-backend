@@ -15,19 +15,19 @@ export class MailController {
     return this.mailService.sendTestEmail(body.email);
   }
 
-  @Post('send-otp')
-  async sendOtp(
+  @Post('send-link')
+  async sendLink(
     @Body()
     body: {
       email: string;
       name: string;
-      otp: string;
+      link: string;
     },
   ) {
-    return this.mailService.sendRegistrationOtp(
+    return this.mailService.sendRegistrationLink(
       body.email,
       body.name,
-      body.otp,
+      body.link,
     );
   }
 }

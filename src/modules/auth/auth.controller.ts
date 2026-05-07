@@ -15,6 +15,8 @@ import {
   ResetPasswordDto,
   RefreshTokenDto,
   VerifyRegistrationDto,
+  SyncFirebaseUserDto,
+  ValidateUserDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -23,6 +25,26 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @ApiOperation({ summary: 'Sync Firebase user to MongoDB' })
+  @Post('firebase/sync-user')
+  syncFirebaseUser(@Body() dto: SyncFirebaseUserDto) {
+    return this.authService.syncFirebaseUser(dto);
+  }
+
+  @ApiOperation({ summary: 'Validate user existence in MongoDB' })
+  @HttpCode(HttpStatus.OK)
+  @Post('firebase/validate-user')
+  validateUser(@Body() dto: ValidateUserDto) {
+    return this.authService.validateUser(dto);
+  }
+
+  @ApiOperation({ summary: 'Check if email is available in MongoDB' })
+  @HttpCode(HttpStatus.OK)
+  @Post('firebase/check-email')
+  checkEmail(@Body() dto: ValidateUserDto) {
+    return this.authService.checkEmail(dto);
+  }
 
   @ApiOperation({ summary: 'Register a new customer account (sends OTP)' })
   @Post('register')

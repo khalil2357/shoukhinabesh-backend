@@ -4,6 +4,7 @@ import {
   IsString,
   MinLength,
   IsOptional,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -72,4 +73,30 @@ export class VerifyRegistrationDto {
   @IsString()
   @IsNotEmpty()
   otp: string;
+}
+
+export class SyncFirebaseUserDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  uid: string;
+
+  @ApiProperty()
+  @IsEmail()
+  email: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty()
+  @IsBoolean()
+  emailVerified: boolean;
+}
+
+export class ValidateUserDto {
+  @ApiProperty()
+  @IsEmail()
+  email: string;
 }

@@ -15,8 +15,11 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   VerifyRegistrationDto,
+  SyncFirebaseUserDto,
+  ValidateUserDto,
 } from './dto/auth.dto';
 import { MailService } from '../mail/mail.service';
+import { FirebaseService } from './firebase/firebase.service';
 
 @Injectable()
 export class AuthService {
@@ -25,106 +28,117 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private mail: MailService,
+    private firebase: FirebaseService,
   ) {}
 
-  // ─── Register ──────────────────────────────────────────────────────────────
+  // ─── Sync Firebase User ────────────────────────────────────────────────────
 
-  async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-
-    if (existing) {
-      if (existing.isVerified) {
-        throw new ConflictException('Email already in use');
-      } else {
-        const hashed = await bcrypt.hash(dto.password, 12);
-        await this.prisma.user.update({
-          where: { email: dto.email },
-          data: { name: dto.name, password: hashed },
-        });
-      }
-    } else {
-      const hashed = await bcrypt.hash(dto.password, 12);
-      await this.prisma.user.create({
-        data: {
-          name: dto.name,
-          email: dto.email,
-          password: hashed,
-          isVerified: false,
-        },
-      });
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-
-    // Invalidate old OTPs
-    if (user) {
-      await this.prisma.otpCode.updateMany({
-        where: { userId: user.id, used: false },
-        data: { used: true },
-      });
-
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-      await this.prisma.otpCode.create({
-        data: { userId: user.id, code, expiresAt },
-      });
-
-      try {
-        await this.mail.sendRegistrationOtp(user.email, user.name, code);
-      } catch (err) {
-        console.error('Failed to send registration OTP:', err);
-      }
-    }
-
-    return { message: 'OTP sent to email. Please verify.' };
-  }
-
-  // ─── Verify Registration ───────────────────────────────────────────────────
-
-  async verifyRegistration(dto: VerifyRegistrationDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (!user) throw new BadRequestException('Invalid request');
-    if (user.isVerified)
-      throw new BadRequestException('User is already verified');
-
-    const otpRecord = await this.prisma.otpCode.findFirst({
+  async syncFirebaseUser(dto: SyncFirebaseUserDto) {
+    const email = dto.email.toLowerCase().trim();
+    
+    // 1. Check if user already exists
+    let user = await this.prisma.user.findFirst({
       where: {
-        userId: user.id,
-        code: dto.otp,
-        used: false,
-        expiresAt: { gt: new Date() },
+        OR: [{ firebaseUid: dto.uid }, { email }],
       },
     });
 
-    if (!otpRecord)
-      throw new BadRequestException('OTP is invalid or has expired');
-
-    await this.prisma.$transaction([
-      this.prisma.otpCode.update({
-        where: { id: otpRecord.id },
-        data: { used: true },
-      }),
-      this.prisma.user.update({
+    if (user) {
+      // Update existing user
+      user = await this.prisma.user.update({
         where: { id: user.id },
-        data: { isVerified: true },
-      }),
-    ]);
+        data: {
+          firebaseUid: dto.uid,
+          isVerified: user.isVerified || dto.emailVerified,
+          name: user.name || dto.name,
+        },
+      });
+    } else {
+      // 2. Atomic Creation: ONLY create in MongoDB if they are verified in Firebase
+      if (!dto.emailVerified) {
+        throw new BadRequestException('Email must be verified before creating an account record.');
+      }
+      
+      const randomPassword = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10);
+      const hashed = await bcrypt.hash(randomPassword, 12);
+      
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            name: dto.name,
+            email,
+            password: hashed,
+            isVerified: dto.emailVerified,
+            firebaseUid: dto.uid,
+          },
+        });
+      } catch (error) {
+        // Fallback for race conditions
+        user = await this.prisma.user.findFirst({ where: { email } });
+        if (user) {
+          user = await this.prisma.user.update({
+            where: { id: user.id },
+            data: { firebaseUid: dto.uid, isVerified: user.isVerified || dto.emailVerified },
+          });
+        } else {
+          throw error;
+        }
+      }
+    }
 
-    return { message: 'Registration successful. You can now login.' };
+    return { message: 'User synced successfully', userId: user.id };
+  }
+
+  // ─── Validate User ─────────────────────────────────────────────────────────
+
+  async validateUser(dto: ValidateUserDto) {
+    const email = dto.email.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new NotFoundException('No account found with this email.');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is inactive.');
+    }
+
+    return { message: 'User is valid' };
+  }
+
+  async checkEmail(dto: ValidateUserDto) {
+    const email = dto.email.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (user && user.isVerified) {
+      throw new ConflictException('Email already in use');
+    }
+
+    return { message: 'Email is available' };
+  }
+
+  // ─── Register (Deprecated in favor of direct Firebase + Sync) ──────────────
+
+  async register(dto: RegisterDto) {
+    // This is now handled by Firebase on the frontend + syncFirebaseUser on the backend
+    throw new BadRequestException('Use Firebase registration and sync-user instead.');
+  }
+
+  async verifyRegistration(dto: VerifyRegistrationDto) {
+    // This is now handled by Firebase on the frontend + syncFirebaseUser on the backend
+    throw new BadRequestException('Use Firebase verification and sync-user instead.');
   }
 
   // ─── Login ─────────────────────────────────────────────────────────────────
 
   async login(dto: LoginDto) {
+    const email = dto.email.toLowerCase().trim();
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email },
     });
     if (!user || !user.isActive)
       throw new UnauthorizedException('Invalid credentials');
