@@ -10,9 +10,7 @@ export class MailController {
     const to = body?.to;
     if (!to) throw new BadRequestException('Missing `to` in body');
 
-    await this.mailService.sendTestEmail(to).catch((err) => {
-      throw err;
-    });
+    await this.mailService.sendTestEmail(to);
 
     return { ok: true };
   }
