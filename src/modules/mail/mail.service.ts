@@ -14,25 +14,32 @@ export class MailService {
   private readonly fromEmail: string;
 
   constructor(private config: ConfigService) {
-    const smtpHost = this.config.get<string>('SMTP_HOST');
-    const smtpPort = Number(this.config.get<string>('SMTP_PORT') || 587);
-    const smtpUser = this.config.get<string>('SMTP_USER');
-    const smtpPass = this.config.get<string>('SMTP_PASS')?.replace(/\s+/g, '');
+    // Prefer explicit Mailtrap SMTP settings when available, otherwise fall back to generic SMTP_* envs
+    const smtpHost = this.config.get<string>('MAILTRAP_SMTP_HOST') || this.config.get<string>('SMTP_HOST');
+    const smtpPort = Number(
+      this.config.get<string>('MAILTRAP_SMTP_PORT') || this.config.get<string>('SMTP_PORT') || 587,
+    );
+    const smtpUser = this.config.get<string>('MAILTRAP_SMTP_USER') || this.config.get<string>('SMTP_USER');
+    const smtpPass = (
+      this.config.get<string>('MAILTRAP_SMTP_PASS') || this.config.get<string>('SMTP_PASS')
+    )?.replace(/\s+/g, '');
     const mailtrapToken = this.config.get<string>('MAILTRAP_API_TOKEN') || this.config.get<string>('API_TOKEN');
 
     this.fromEmail = this.config.get<string>('EMAIL_FROM') || 'no-reply@shoukhinabesh.com';
 
     // SMTP init
     if (smtpHost && smtpUser && smtpPass) {
+      const useSecure = smtpPort === 465;
       this.transporter = nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
-        secure: smtpPort === 465,
+        secure: useSecure,
         auth: {
           user: smtpUser,
           pass: smtpPass,
         },
         tls: {
+          // Mailtrap requires STARTTLS on 587 — nodemailer will upgrade automatically
           rejectUnauthorized: false,
         },
         connectionTimeout: 5000,
@@ -41,10 +48,8 @@ export class MailService {
 
       this.transporter
         .verify()
-        .then(() => this.logger.log('✅ SMTP Ready'))
-        .catch((err) =>
-          this.logger.warn('⚠️ SMTP Verify Failed: ' + err),
-        );
+        .then(() => this.logger.log(`✅ SMTP Ready (${smtpHost}:${smtpPort})`))
+        .catch((err) => this.logger.warn('⚠️ SMTP Verify Failed: ' + this.getErrorMessage(err)));
     }
 
     // Mailtrap init (API)
@@ -52,7 +57,7 @@ export class MailService {
       this.mailtrapToken = mailtrapToken.trim();
       this.logger.log('✅ Mailtrap token loaded');
     }
-    this.logger.log(`🚀 MailService initialized (SMTP: ${!!this.transporter}, Mailtrap: ${!!this.mailtrapToken})`);
+    this.logger.log(`🚀 MailService initialized (SMTP: ${!!this.transporter}, Mailtrap API: ${!!this.mailtrapToken})`);
   }
 
   // ================= PUBLIC API =================
